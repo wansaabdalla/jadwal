@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>منظم جدول المحاضرات الذكي</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+*{box-sizing:border-box; font-family:'Segoe UI', Tahoma, sans-serif}
+body{margin:0; background:#f4f6fb; }
+.header{background:linear-gradient(90deg,#0b3d91,#1976d2); color:white; padding:18px; text-align:center; font-weight:bold; font-size:18px; line-height:1.6}
+.container{max-width:900px; margin:20px auto; padding:15px}
+.card{background:white; border-radius:16px; padding:20px; box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+.btn{padding:12px 22px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; font-size:15px; margin:5px}
+.btn-primary{background:#1976d2; color:white}
+.btn-success{background:#2e7d32; color:white}
+.btn-danger{background:#c62828; color:white}
+input,select{padding:10px; border-radius:8px; border:1px solid #ccc; width:100%; margin:5px 0}
+.grid-form{display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; gap:8px}
+@media(max-width:700px){.grid-form{grid-template-columns:1fr 1fr}}
+table{width:100%; border-collapse:collapse; margin-top:15px}
+th,td{border:1px solid #ddd; padding:10px; text-align:center}
+th{background:#0b3d91; color:white}
+td{background:#fafafa}
+.badge{background:#e3f2fd; padding:4px 8px; border-radius:6px; font-size:12px}
+.page{display:none}
+.page.active{display:block}
+.error{color:#c62828; background:#ffebee; padding:10px; border-radius:8px; margin:10px 0; display:none}
+</style>
+</head>
+<body>
+
+<div class="header">
+جامعة البطانة<br>
+كلية علوم الحاسوب وتقانة المعلومات<br>
+الدفعة الرابعة عشر
+</div>
+
+<!-- الواجهة الاولى -->
+<div id="page1" class="page active">
+<div class="container">
+<div class="card">
+<h3>إدخال بيانات المحاضرات (قاعدة البيانات)</h3>
+<div class="grid-form">
+<input id="mat" placeholder="المادة">
+<input id="teacher" placeholder="اسم الاستاذ">
+<input id="room" placeholder="القاعة">
+<select id="day"><option>السبت</option><option>الاحد</option><option>الاثنين</option><option>الثلاثاء</option><option>الاربعاء</option></select>
+<select id="time"><option>08:00 - 09:30</option><option>09:30 - 11:00</option><option>11:00 - 12:30</option><option>12:30 - 02:00</option><option>02:00 - 03:30</option></select>
+</div>
+<div id="err" class="error"></div>
+<button class="btn btn-primary" onclick="addLecture()">إضافة للمحاضرة +</button>
+<button class="btn btn-danger" onclick="clearAll()">مسح الكل</button>
+
+<table id="dbTable"><tr><th>المادة</th><th>الاستاذ</th><th>القاعة</th><th>اليوم</th><th>الزمن</th><th>حذف</th></tr></table>
+
+<div style="text-align:center; margin-top:20px">
+<button class="btn btn-primary" style="padding:15px 40px; font-size:17px" onclick="goToSchedule()">1- إنشاء الجدول 📅</button>
+<button class="btn btn-success" style="padding:15px 40px; font-size:17px" onclick="savePDF('dbTable','جدول_قاعدة_البيانات')">2- حفظ الجدول PDF 💾</button>
+</div>
+</div>
+</div>
+</div>
+
+<!-- الواجهة التانية -->
+<div id="page2" class="page">
+<div class="container">
+<div class="card" id="pdfArea">
+<div class="header" style="border-radius:12px; margin:-20px -20px 15px -20px">جامعة البطانة - كلية علوم الحاسوب وتقانة المعلومات - الدفعة 14<br>الجدول الدراسي الذكي النهائي</div>
+<table id="finalTable"><tr><th>اليوم / الزمن</th><th>08:00 - 09:30</th><th>09:30 - 11:00</th><th>11:00 - 12:30</th><th>12:30 - 02:00</th><th>02:00 - 03:30</th></tr></table>
+</div>
+<div style="text-align:center; margin-top:15px">
+<button class="btn btn-success" onclick="savePDF('pdfArea','الجدول_النهائي')">حفظ الجدول PDF 💾</button>
+<button class="btn btn-primary" onclick="back()">رجوع للتعديل</button>
+</div>
+</div>
+</div>
+
+<script>
+let db = JSON.parse(localStorage.getItem('battana_db')||'[]');
+let times = ["08:00 - 09:30","09:30 - 11:00","11:00 - 12:30","12:30 - 02:00","02:00 - 03:30"];
+let days = ["السبت","الاحد","الاثنين","الثلاثاء","الاربعاء"];
+
+function renderDB(){
+ let t = document.getElementById('dbTable');
+ t.innerHTML = "<tr><th>المادة</th><th>الاستاذ</th><th>القاعة</th><th>اليوم</th><th>الزمن</th><th>حذف</th></tr>";
+ db.forEach((r,i)=>{
+   t.innerHTML+=`<tr><td>${r.mat}</td><td>${r.teacher}</td><td>${r.room}</td><td>${r.day}</td><td>${r.time}</td><td><button onclick="del(${i})">X</button></td></tr>`;
+ });
+ localStorage.setItem('battana_db', JSON.stringify(db));
+}
+function addLecture(){
+ let mat=document.getElementById('mat').value.trim();
+ let teacher=document.getElementById('teacher').value.trim();
+ let room=document.getElementById('room').value.trim();
+ let day=document.getElementById('day').value;
+ let time=document.getElementById('time').value;
+ let err=document.getElementById('err');
+ err.style.display='none';
+ if(!mat||!teacher||!room){ err.innerText="اكملي كل الحقول"; err.style.display='block'; return; }
+
+ // شرط التعارض 1: نفس القاعة نفس الزمن نفس اليوم
+ let conflictRoom = db.find(x=> x.day==day && x.time==time && x.room==room);
+ if(conflictRoom){ err.innerText=`⛔ تعارض! القاعة ${room} مشغولة يوم ${day} الساعة ${time} بمادة ${conflictRoom.mat}`; err.style.display='block'; return; }
+ // شرط التعارض 2: نفس الاستاذ نفس الزمن نفس اليوم
+ let conflictTeacher = db.find(x=> x.day==day && x.time==time && x.teacher==teacher);
+ if(conflictTeacher){ err.innerText=`⛔ تعارض! الاستاذ ${teacher} عندو محاضرة يوم ${day} الساعة ${time} (${conflictTeacher.mat})`; err.style.display='block'; return; }
+
+ db.push({mat, teacher, room, day, time});
+ renderDB();
+ document.getElementById('mat').value=""; document.getElementById('teacher').value=""; document.getElementById('room').value="";
+}
+function del(i){ db.splice(i,1); renderDB(); }
+function clearAll(){ if(confirm("تمسحي كل البيانات؟")){ db=[]; renderDB(); } }
+
+function goToSchedule(){
+ if(db.length==0){ alert("ضيفي محاضرات اول"); return; }
+ // بناء الجدول النهائي
+ let ft = document.getElementById('finalTable');
+ ft.innerHTML = "<tr><th>اليوم / الزمن</th><th>08:00 - 09:30</th><th>09:30 - 11:00</th><th>11:00 - 12:30</th><th>12:30 - 02:00</th><th>02:00 - 03:30</th></tr>";
+ days.forEach(d=>{
+   let row=`<tr><td><b>${d}</b></td>`;
+   times.forEach(t=>{
+     let lec = db.find(x=> x.day==d && x.time==t);
+     if(lec){ row+=`<td><b>${lec.mat}</b><br><span class="badge">${lec.teacher}</span><br><span class="badge">${lec.room}</span></td>`; }
+     else{ row+=`<td>-</td>`; }
+   });
+   row+="</tr>";
+   ft.innerHTML+=row;
+ });
+ document.getElementById('page1').classList.remove('active');
+ document.getElementById('page2').classList.add('active');
+}
+function back(){ document.getElementById('page2').classList.remove('active'); document.getElementById('page1').classList.add('active'); }
+
+async function savePDF(elementId, filename){
+ let el = document.getElementById(elementId);
+ let canvas = await html2canvas(el, {scale:2});
+ let imgData = canvas.toDataURL('image/png');
+ const { jsPDF } = window.jspdf;
+ let pdf = new jsPDF('p','mm','a4');
+ let w = pdf.internal.pageSize.getWidth();
+ let h = (canvas.height * w) / canvas.width;
+ pdf.addImage(imgData,'PNG',0,0,w,h);
+ pdf.save(filename+'.pdf');
+}
+renderDB();
+</script>
+</body>
+</html>
